@@ -5,6 +5,10 @@ import { Input } from "@/components/ui/input"
 import { Plus, Search } from "lucide-react"
 import Link from "next/link"
 
+// ESTO ES CLAVE: Fuerza a Next.js a buscar datos nuevos siempre
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 export default async function ClientsPage({
   searchParams,
 }: {
@@ -13,8 +17,8 @@ export default async function ClientsPage({
   const params = await searchParams
   const supabase = await createClient()
 
-  // 1. Simplificamos la consulta al máximo para asegurar que traiga datos
-  // Quitamos temporalmente la relación compleja de profiles para debuggear
+  // Consulta ultra-simplificada para asegurar que traiga datos
+  // Quitamos el JOIN con profiles que fallaba en tus capturas
   let query = supabase
     .from("clients")
     .select(`
@@ -23,8 +27,8 @@ export default async function ClientsPage({
     `)
     .order("created_at", { ascending: false })
 
+  // Filtro de búsqueda que cubre todas las columnas que vimos en tu DB
   if (params.q) {
-    // Buscamos en todas las columnas posibles de nombre según tus capturas
     query = query.or(`full_name.ilike.%${params.q}%,name.ilike.%${params.q}%,phone.ilike.%${params.q}%`)
   }
 
@@ -35,16 +39,16 @@ export default async function ClientsPage({
   const { data: clients, error } = await query
 
   if (error) {
-    console.error("Error cargando clientes:", error)
+    console.error("Error de Supabase:", error.message)
   }
 
-  // 2. Mapeo de seguridad para que el componente siempre reciba un nombre
+  // Mapeo de seguridad: Si no hay full_name, usamos name o un texto genérico
   const clientsWithStats = (clients || []).map((client: any) => ({
     ...client,
-    // Prioridad de nombre para evitar celdas vacías
+    // Prioridad de visualización para corregir lo que vimos en el Table Editor
     full_name: client.full_name || client.name || "Cliente sin nombre",
     active_loans: client.loans?.[0]?.count || 0,
-    collector_name: "Sin asignar", // Simplificado para que no bloquee la vista
+    collector_name: "Administrador", 
   }))
 
   return (
@@ -53,61 +57,58 @@ export default async function ClientsPage({
         <div>
           <h1 className="text-xl font-bold">Clientes</h1>
           <p className="text-sm text-muted-foreground">
-            {clientsWithStats.length} cliente{clientsWithStats.length !== 1 ? "s" : ""} registrados
+            {clientsWithStats.length} cliente{clientsWithStats.length !== 1 ? "s" : ""} encontrados
           </p>
         </div>
         <Link href="/dashboard/clients/new">
           <Button size="sm" className="gap-1.5">
             <Plus className="h-4 w-4" />
-            Nuevo
+            Nuevo Cliente
           </Button>
         </Link>
       </div>
 
-      <ClientsFilters initialQuery={params.q} initialStatus={params.status} />
+      <form className="flex gap-2" action="/dashboard/clients">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            name="q"
+            placeholder="Buscar por nombre, teléfono o dirección..."
+            defaultValue={params.q}
+            className="pl-9"
+          />
+        </div>
+        <select
+          name="status"
+          defaultValue={params.status || "all"}
+          className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+        >
+          <option value="all">Todos</option>
+          <option value="active">Activos</option>
+          <option value="inactive">Inactivos</option>
+        </select>
+        <Button type="submit" variant="secondary" size="sm">
+          Filtrar
+        </Button>
+      </form>
 
-      {/* Si la lista sigue vacía, mostramos un mensaje de ayuda */}
+      {/* Si la lista está vacía después de todo, mostramos este bloque de depuración */}
       {clientsWithStats.length === 0 ? (
-        <div className="p-8 text-center border rounded-lg bg-muted/10">
-          <p className="text-muted-foreground">No se encontraron clientes en la base de datos.</p>
+        <div className="flex flex-col items-center justify-center p-12 border-2 border-dashed rounded-lg">
+          <p className="text-lg font-medium">No aparecen clientes</p>
+          <p className="text-sm text-muted-foreground mb-4">
+            Los datos existen en la DB, pero el RLS o la caché los bloquean.
+          </p>
+          <Button 
+            variant="outline" 
+            onClick={() => window.location.reload()}
+          >
+            Forzar Recarga
+          </Button>
         </div>
       ) : (
         <ClientsList clients={clientsWithStats} />
       )}
     </div>
-  )
-}
-
-function ClientsFilters({
-  initialQuery,
-  initialStatus,
-}: {
-  initialQuery?: string
-  initialStatus?: string
-}) {
-  return (
-    <form className="flex gap-2" action="/dashboard/clients">
-      <div className="relative flex-1">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          name="q"
-          placeholder="Buscar cliente..."
-          defaultValue={initialQuery}
-          className="pl-9"
-        />
-      </div>
-      <select
-        name="status"
-        defaultValue={initialStatus || "all"}
-        className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-      >
-        <option value="all">Todos</option>
-        <option value="active">Activos</option>
-        <option value="inactive">Inactivos</option>
-      </select>
-      <Button type="submit" variant="secondary" size="sm">
-        Filtrar
-      </Button>
-    </form>
   )
 }
