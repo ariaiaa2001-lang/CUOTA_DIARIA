@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server"
+
 import { ClientsList } from "@/components/clients/clients-list"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
