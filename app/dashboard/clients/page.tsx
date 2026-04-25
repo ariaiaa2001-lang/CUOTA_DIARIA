@@ -13,17 +13,23 @@ export default async function ClientsPage({
   const params = await searchParams
   const supabase = await createClient()
 
+  // 1. Consultamos los clientes. 
+  // Traemos tanto 'name' como 'full_name' para evitar que la lista salga vacía.
   let query = supabase
     .from("clients")
     .select(`
       *,
+      name,
+      full_name,
       loans:loans(count),
       collector:profiles!clients_collector_id_fkey(full_name)
     `)
     .order("created_at", { ascending: false })
 
+  // 2. Filtros de búsqueda corregidos
   if (params.q) {
-    query = query.or(`full_name.ilike.%${params.q}%,id_number.ilike.%${params.q}%,phone.ilike.%${params.q}%`)
+    // Buscamos en ambas columnas de nombre para que no importe cuál usó el formulario
+    query = query.or(`full_name.ilike.%${params.q}%,name.ilike.%${params.q}%,id_number.ilike.%${params.q}%,phone.ilike.%${params.q}%`)
   }
 
   if (params.status && params.status !== "all") {
@@ -32,10 +38,13 @@ export default async function ClientsPage({
 
   const { data: clients, error } = await query
 
+  // 3. Formateo de datos "Salvavidas"
+  // Si full_name es nulo, usamos el valor de name (que es donde se está guardando según tus capturas)
   const clientsWithStats = (clients || []).map((client: any) => ({
     ...client,
+    display_name: client.full_name || client.name || "Sin nombre", 
     active_loans: client.loans?.[0]?.count || 0,
-    collector_name: client.collector?.full_name,
+    collector_name: client.collector?.full_name || "Sin asignar",
   }))
 
   return (
@@ -60,6 +69,7 @@ export default async function ClientsPage({
       <ClientsFilters initialQuery={params.q} initialStatus={params.status} />
 
       {/* Clients List */}
+      {/* Pasamos la lista procesada con display_name */}
       <ClientsList clients={clientsWithStats} />
     </div>
   )
